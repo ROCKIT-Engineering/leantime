@@ -4,18 +4,20 @@ services:
     container_name: traefik
     restart: always
     command:
-      # Entrypoints for HTTP and HTTPS
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      # Enable Docker as a provider
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=webproxy"
       # Use LetsEncrypt (Staging for testing, remove .staging for production)
-      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
-      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
-      # HTTP -> HTTPS redirection
-      - --entrypoints.web.http.redirections.entrypoint.to=websecure
-      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.le.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory" # staging server. remove for production
+      - "--certificatesresolvers.le.acme.tlschallenge=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls=true"
     ports:
       - "80:80"
       - "443:443"
@@ -41,9 +43,9 @@ services:
       timeout: 10s
       retries: 3
 
-  leantime_redis:
-    image: redis:latest
-    container_name: leantime_redis
+  leantime_cache:
+    image: redis:8.4.0
+    container_name: redis_leantime
     restart: unless-stopped
     networks:
       - leantime-net
@@ -57,7 +59,7 @@ services:
       - redis_data:/data
 
   leantime:
-    image: leantime/leantime:${LEAN_VERSION:-latest}
+    image: leantime/leantime:3.5.12
     restart: unless-stopped
     env_file: ./.env                                        # Environment file with settings
     # Add security options
@@ -80,7 +82,7 @@ services:
     depends_on:
       leantime_db:
         condition: service_healthy
-      leantime_redis:
+      leantime_cache:
         condition: service_healthy
     labels:
       - "traefik.enable=true"
