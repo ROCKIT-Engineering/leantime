@@ -10,7 +10,6 @@ services:
       # Use LetsEncrypt (Staging for testing, remove .staging for production)
       - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
       - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.le.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory" # staging server. remove for production
       - "--certificatesresolvers.le.acme.tlschallenge=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
