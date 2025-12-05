@@ -1,32 +1,29 @@
 services:
   traefik:
     image: traefik:v3.6.2
-    container_name: "traefik"
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - traefik-net
+    container_name: traefik
+    restart: always
     command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=traefik-net"
-      - "--entryPoints.web.address=:80"
-      # TLS
-      - "--entryPoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entryPoints.web.http.redirections.entryPoint.scheme=https"
-      - "--entryPoints.websecure.address=:443"
-      - "--entryPoints.websecure.http.tls=true"
-      # Let's Encrypt configuration
-      - "--certificatesresolvers.le.acme.email=${LETSENCRYPT_EMAIL}"
-      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      # Entrypoints for HTTP and HTTPS
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Enable Docker as a provider
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      # Use LetsEncrypt (Staging for testing, remove .staging for production)
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      # HTTP -> HTTPS redirection
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt:/letsencrypt
+    networks:
+      - webproxy
 
   leantime_db:
     image: mysql:8.4
@@ -46,7 +43,7 @@ services:
 
   leantime_redis:
     image: redis:latest
-    container_name: redis_leantime
+    container_name: leantime_redis
     restart: unless-stopped
     networks:
       - leantime-net
@@ -74,28 +71,24 @@ services:
       - CAP_SETUID
     networks:
       - leantime-net
-      - traefik-net
+      - webproxy
     volumes:
       - public_userfiles:/var/www/html/public/userfiles     # Volume to store public files, logo etc
       - userfiles:/var/www/html/userfiles                   # Original volume name for compatibility
       - plugins:/var/www/html/app/Plugins                   # Plugin storage
-      - logs:/var/www/html/storage/logs
-    labels:
-      - "traefik.enable=true"
-      # Router
-      - "traefik.http.routers.leantime.rule=Host(\"${LEAN_HOST_NAME}\")"
-      - "traefik.http.routers.leantime.entrypoints=websecure"
-      - "traefik.http.routers.leantime.service=leantime"
-      # Service
-      - "traefik.http.services.leantime.loadbalancer.server.port=8080"
-      # TLS
-      - "traefik.http.routers.leantime.tls=true"
-      - "traefik.http.routers.leantime.tls.certresolver=le"
+      - logs:/var/www/html/storage/logs                     # Log storage
     depends_on:
       leantime_db:
         condition: service_healthy
       leantime_redis:
         condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.leantime.entrypoints=websecure"
+      - "traefik.http.routers.leantime.rule=Host(`${LEAN_DOMAIN}`)" # <--- CHANGE THIS TO YOUR DOMAIN
+      - "traefik.http.routers.leantime.tls=true"
+      - "traefik.http.routers.leantime.tls.certresolver=le"
+      - "traefik.http.services.leantime.loadbalancer.server.port=8080"
 
   # Add a helper container for volume permissions
   # Run via docker compose --profile mysql_helper up -d
@@ -118,4 +111,4 @@ volumes:
 
 networks:
   leantime-net:
-  traefik-net:
+  webproxy:
